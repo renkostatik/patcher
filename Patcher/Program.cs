@@ -36,6 +36,8 @@ class Program
                 }
             }
         }
+
+        Console.WriteLine("Done.");
     }
 
     static void PatchBanchoIP(AssemblyDefinition assembly, string ip)
@@ -80,9 +82,7 @@ class Program
                     // Check if this is a constructor or method creating an IPEndPoint
                     if (methodRef.Name == ".ctor" || methodRef.Name == "Create")
                     {
-                        int ipDecimal = BitConverter.ToInt32(
-                            IPAddress.Parse(ip).GetAddressBytes()
-                        );
+                        long ipDecimal = IPAddress.Parse(ip).Address;
 
                         // Skip these ldc.i4 values
                         List<int> skip = new List<int>()
@@ -95,7 +95,7 @@ class Program
 
                         // Iterate through the sorrounding instructions to find the ldc.i4 matches
                         // Replace the matches with the new ip address
-                        for (int j = 0; j < 8; j++)
+                        for (int j = 0; j < 12; j++)
                         {
                             object value = method.Body.Instructions[i - j].Operand;
                             OpCode code = method.Body.Instructions[i - j].OpCode;
@@ -106,12 +106,17 @@ class Program
                                     continue;
 
                                 Console.WriteLine($"{method.Body.Instructions[i - j]} -> {ipDecimal} ({ip})");
-                                method.Body.Instructions[i - j] = Instruction.Create(OpCodes.Ldc_I4, ipDecimal);
+                                method.Body.Instructions[i - j] = Instruction.Create(OpCodes.Ldc_I4, (int)ipDecimal);
+                            }
+
+                            if (code == OpCodes.Ldc_I8)
+                            {
+                                Console.WriteLine($"{method.Body.Instructions[i - j]} -> {ipDecimal} ({ip})");
+                                method.Body.Instructions[i - j] = Instruction.Create(OpCodes.Ldc_I8, ipDecimal);
                             }
                         }
 
                         Console.WriteLine("Done.");
-                        return;
                     }
                 }
             }
@@ -134,6 +139,12 @@ class Program
             Directory.SetCurrentDirectory(directoryPath);
 
         // TODO: de4dot deobfuscating
+
+        if (!File.Exists(fileName))
+        {
+            Console.WriteLine("File could not be found!");
+            return;
+        }
 
         Console.WriteLine("Loading assembly...");
         AssemblyDefinition assembly = AssemblyDefinition.ReadAssembly(fileName);
