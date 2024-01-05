@@ -170,7 +170,7 @@ class Program
 
         if (!Directory.Exists(directoryPath)) {
             Console.WriteLine("Directory could not be found!");
-            return;
+            System.Environment.Exit(1);
         }
 
         if (!string.IsNullOrEmpty(directoryPath))
@@ -181,7 +181,7 @@ class Program
         if (!File.Exists(fileName))
         {
             Console.WriteLine("File could not be found!");
-            return;
+            System.Environment.Exit(1);
         }
 
         Console.WriteLine("Loading assembly...");
