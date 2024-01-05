@@ -125,10 +125,43 @@ class Program
 
     static void Main()
     {
+        
         string assemblyPath = "./assemblies/osu!.exe";
         string outputPath = "./osu!Patched.exe";
         string domain = "lekuru.xyz";
         string ip = "176.57.150.202";
+
+        foreach (string arg in Environment.GetCommandLineArgs().Skip(1))
+        {
+            var split = arg.Split('=');
+            if (split.Length != 2) {
+                Console.WriteLine($"Invalid argument: {arg}");
+                Console.WriteLine("Usage: --ip=<ip> --domain=<domain> --assembly=<path> --output=<path>");
+                System.Environment.Exit(1);
+            }
+            switch (split[0]) {
+                case "--ip":
+                    ip = split[1];
+                    break;
+                case "-d":
+                case "--domain":
+                    domain = split[1];
+                    break;
+                case "-a":
+                case "--assembly":
+                    assemblyPath = split[1];
+                    break;
+                case "-o":
+                case "--output":
+                    outputPath = split[1];
+                    break;
+                default:
+                    Console.WriteLine($"Invalid argument: {arg}");
+                    Console.WriteLine("Usage: --ip=<ip> --domain=<domain> --assembly=<path> --output=<path>");
+                    System.Environment.Exit(1);
+                    break;
+            }
+        }
 
         string outputAssemblyPath = Path.GetFullPath(outputPath);
         string fileName = Path.GetFileName(assemblyPath);
