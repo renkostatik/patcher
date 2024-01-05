@@ -168,6 +168,11 @@ class Program
 
         string? directoryPath = Path.GetDirectoryName(assemblyPath);
 
+        if (!Directory.Exists(directoryPath)) {
+            Console.WriteLine("Directory could not be found!");
+            return;
+        }
+
         if (!string.IsNullOrEmpty(directoryPath))
             Directory.SetCurrentDirectory(directoryPath);
 
