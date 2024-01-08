@@ -1,4 +1,6 @@
-﻿using System.Net;
+﻿using System;
+using System.Diagnostics;
+using System.Net;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -122,14 +124,53 @@ class Program
             }
         }
     }
+    static int Deobfuscate(string assemblyPath, string newAssemblyPath, string de4dotPath)
+    {
+        Console.WriteLine("Deobfuscating...");
 
+        using (Process process = new Process())
+        {
+            process.StartInfo.FileName = "dotnet";
+            process.StartInfo.Arguments = $"{de4dotPath} {assemblyPath} -o {newAssemblyPath}";
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.RedirectStandardError = true;
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.CreateNoWindow = true;
+
+            // Start the de4dot
+            process.Start();
+
+            // Read the output and error stream
+            Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+            Task<string> errorTask = process.StandardError.ReadToEndAsync();
+
+            // Wait for both streams to be fully read
+            Task.WaitAll(outputTask, errorTask);
+
+            // make sure that the output is captured
+            string output = outputTask.Result;
+            string error = errorTask.Result;
+
+            Console.WriteLine($"{output}");
+            if (error != "")
+                Console.WriteLine($"de4dot Error:\n{error}");
+
+
+            // Wait for the de4dot to deobfuscate
+            process.WaitForExit();
+
+            return process.ExitCode;
+        }
+    }
     static void Main()
     {
-        
+        // TODO move it to some sort of config instead of arguments or support both the args and the config
         string assemblyPath = "./assemblies/osu!.exe";
         string outputPath = "./osu!Patched.exe";
         string domain = "lekuru.xyz";
         string ip = "176.57.150.202";
+        string de4dotPath = "C:\\de4dot\\netcoreapp2.1\\de4dot.dll";
+
 
         foreach (string arg in Environment.GetCommandLineArgs().Skip(1))
         {
@@ -165,18 +206,29 @@ class Program
 
         string outputAssemblyPath = Path.GetFullPath(outputPath);
         string fileName = Path.GetFileName(assemblyPath);
-
+        
         string? directoryPath = Path.GetDirectoryName(assemblyPath);
 
         if (!Directory.Exists(directoryPath)) {
             Console.WriteLine("Directory could not be found!");
             System.Environment.Exit(1);
         }
-
+        
         if (!string.IsNullOrEmpty(directoryPath))
             Directory.SetCurrentDirectory(directoryPath);
-
-        // TODO: de4dot deobfuscating
+        fileName = "osu!deobfuscated.exe";
+        string TempDirectory = Path.GetTempFileName();
+        Console.WriteLine(TempDirectory);
+        var result = Deobfuscate(assemblyPath, TempDirectory, de4dotPath);
+        if (result == 0)
+        {
+            Console.WriteLine("Deobfuscation was succesful");
+            // do nothing(for now)
+        } else
+        {
+            Console.WriteLine("Deobfuscation failed");
+            return;
+        }
 
         if (!File.Exists(fileName))
         {
@@ -191,8 +243,8 @@ class Program
         PatchDomains(assembly, domain);
 
         Console.WriteLine("Writing new assembly...");
-        assembly.Write(outputAssemblyPath);
-
+        assembly.Write("osu!.exe");
+        
         Console.WriteLine("Done.");
     }
 }
