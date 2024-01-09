@@ -216,10 +216,12 @@ class Program
         
         if (!string.IsNullOrEmpty(directoryPath))
             Directory.SetCurrentDirectory(directoryPath);
-        fileName = "osu!deobfuscated.exe";
+
+        
         string TempDirectory = Path.GetTempFileName();
-        Console.WriteLine(TempDirectory);
+        //Console.WriteLine(TempDirectory);
         var result = Deobfuscate(assemblyPath, TempDirectory, de4dotPath);
+        fileName = TempDirectory;
         if (result == 0)
         {
             Console.WriteLine("Deobfuscation was succesful");
@@ -230,6 +232,7 @@ class Program
             return;
         }
 
+        Console.WriteLine(fileName);
         if (!File.Exists(fileName))
         {
             Console.WriteLine("File could not be found!");
