@@ -107,12 +107,18 @@ class Program
                                 if (skip.Contains((int)value))
                                     continue;
 
+                                if ((int)value < 16700000)
+                            	    continue;
+
                                 Console.WriteLine($"{method.Body.Instructions[i - j]} -> {ipDecimal} ({ip})");
                                 method.Body.Instructions[i - j] = Instruction.Create(OpCodes.Ldc_I4, (int)ipDecimal);
                             }
 
                             if (code == OpCodes.Ldc_I8)
                             {
+                                if ((long)value < 16700000)
+                            	    continue;
+
                                 Console.WriteLine($"{method.Body.Instructions[i - j]} -> {ipDecimal} ({ip})");
                                 method.Body.Instructions[i - j] = Instruction.Create(OpCodes.Ldc_I8, ipDecimal);
                             }
@@ -124,6 +130,7 @@ class Program
             }
         }
     }
+
     static int Deobfuscate(string assemblyPath, string newAssemblyPath, string de4dotPath)
     {
         Console.WriteLine("Deobfuscating...");
@@ -162,6 +169,7 @@ class Program
             return process.ExitCode;
         }
     }
+
     static void Main()
     {
         // TODO move it to some sort of config instead of arguments or support both the args and the config
@@ -242,8 +250,8 @@ class Program
         Console.WriteLine("Loading assembly...");
         AssemblyDefinition assembly = AssemblyDefinition.ReadAssembly(fileName);
 
-        PatchBanchoIP(assembly, ip);
         PatchDomains(assembly, domain);
+        PatchBanchoIP(assembly, ip);
 
         Console.WriteLine("Writing new assembly...");
         assembly.Write("osu!.exe");
