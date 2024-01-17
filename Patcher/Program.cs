@@ -256,7 +256,6 @@ class Program
         {
 
             DisplayFailedError();
-            return;
         }
 
         Console.WriteLine(fileName);
