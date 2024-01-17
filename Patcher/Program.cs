@@ -170,6 +170,24 @@ class Program
         }
     }
 
+    public static int DisplayFailedError()
+    {
+        Console.WriteLine("Deobfuscation Failed, Do you wanna continue Patching or exit Patcher Y/N");
+        ConsoleKeyInfo key = Console.ReadKey();
+        if (key.Key == ConsoleKey.Y)
+        {
+            return 1;
+        }
+        else if (key.Key == ConsoleKey.N)
+        {
+            Console.WriteLine("Ok. Exitting...");
+            return 0;
+        }
+        else
+        {
+            return DisplayFailedError();
+        }
+    }
     static void Main()
     {
         // TODO move it to some sort of config instead of arguments or support both the args and the config
@@ -236,7 +254,8 @@ class Program
             // do nothing(for now)
         } else
         {
-            Console.WriteLine("Deobfuscation failed");
+
+            DisplayFailedError();
             return;
         }
 
