@@ -25,16 +25,33 @@ class Program
 
                 if (instruction.OpCode == OpCodes.Ldstr && instruction.Operand is string stringValue)
                 {
-                    if (stringValue.Contains("ppy.sh"))
+                    if(domain == "127.0.0.1" || domain == "localhost")
                     {
-                        // Replace the old domain with the new domain
-                        string newUrl = stringValue.Replace("ppy.sh", domain);
+                        if (stringValue.Contains("ppy.sh"))
+                        {
+                            // Replace the old domain with the new domain
+                            string newUrl = stringValue.Replace(stringValue, domain); // if we are localhost we don't want to change our url to *.127.0.0.1
 
-                        // Update the instruction with the new string value
-                        method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, newUrl);
+                            // Update the instruction with the new string value
+                            method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, newUrl);
 
-                        Console.WriteLine(newUrl);
+                            Console.WriteLine(newUrl);
+                        }
+                    } else
+                    {
+                        if (stringValue.Contains("ppy.sh"))
+                        {
+                            // Replace the old domain with the new domain
+                            string newUrl = stringValue.Replace("ppy.sh", domain);
+
+                            // Update the instruction with the new string value
+                            method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, newUrl);
+
+                            Console.WriteLine(newUrl);
+                        }
                     }
+                    
+
                 }
             }
         }
