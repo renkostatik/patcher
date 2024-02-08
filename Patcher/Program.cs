@@ -29,8 +29,24 @@ class Program
                     {
                         if (stringValue.Contains("ppy.sh"))
                         {
-                            // Replace the old domain with the new domain
-                            string newUrl = stringValue.Replace(stringValue, domain); // if we are localhost we don't want to change our url to *.127.0.0.1
+                            string[] test = stringValue.Split('/');
+                            string newUrl = "";
+                            try
+                            {
+                                if (test[0].Contains("http"))
+                                {
+                                    newUrl = stringValue.Replace(test[2], domain); // if we are localhost we don't want to change our url to *.127.0.0.1
+                                } else
+                                {
+                                    newUrl = stringValue.Replace(test[0], domain); // if we are localhost we don't want to change our url to *.127.0.0.1
+                                }
+                                
+                            } catch (Exception ex)
+                            {
+                                Console.WriteLine($"shit broke: {ex.Message}");
+                            }
+
+
 
                             // Update the instruction with the new string value
                             method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, newUrl);
