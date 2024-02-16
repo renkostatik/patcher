@@ -25,7 +25,7 @@ class Program
 
                 if (instruction.OpCode == OpCodes.Ldstr && instruction.Operand is string stringValue)
                 {
-                    if(domain == "127.0.0.1" || domain == "localhost")
+                    if(domain == "127.0.0.1" || domain == "localhost" || domain.Contains("192.168.0."))
                     {
                         if (stringValue.Contains("ppy.sh"))
                         {
@@ -229,7 +229,7 @@ class Program
         string domain = "lekuru.xyz";
         string ip = "176.57.150.202";
         string de4dotPath = "C:\\de4dot\\netcoreapp2.1\\de4dot.dll";
-
+        bool skipdeob = false;
 
         foreach (string arg in Environment.GetCommandLineArgs().Skip(1))
         {
@@ -255,6 +255,9 @@ class Program
                 case "--output":
                     outputPath = split[1];
                     break;
+                case "--skipd":
+                    skipdeob = true;
+                    break;
                 default:
                     Console.WriteLine($"Invalid argument: {arg}");
                     Console.WriteLine("Usage: --ip=<ip> --domain=<domain> --assembly=<path> --output=<path>");
@@ -279,17 +282,22 @@ class Program
         
         string TempDirectory = Path.GetTempFileName();
         //Console.WriteLine(TempDirectory);
-        var result = Deobfuscate(assemblyPath, TempDirectory, de4dotPath);
-        fileName = TempDirectory;
-        if (result == 0)
+        if(!skipdeob)
         {
-            Console.WriteLine("Deobfuscation was succesful");
-            // do nothing(for now)
-        } else
-        {
+            var result = Deobfuscate(assemblyPath, TempDirectory, de4dotPath);
+            if (result == 0)
+            {
+                Console.WriteLine("Deobfuscation was succesful");
+                // do nothing(for now)
+            }
+            else
+            {
 
-            DisplayFailedError();
+                DisplayFailedError();
+            }
         }
+        fileName = TempDirectory;
+        
 
         Console.WriteLine(fileName);
         if (!File.Exists(fileName))
