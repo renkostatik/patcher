@@ -280,7 +280,7 @@ class Program
             Directory.SetCurrentDirectory(directoryPath);
 
         
-        string TempDirectory = Path.GetTempFileName();
+        string TempDirectory = Path.GetTempFileName() + new Random().Next(1,200000);
         //Console.WriteLine(TempDirectory);
         if(!skipdeob)
         {
@@ -295,6 +295,9 @@ class Program
 
                 DisplayFailedError();
             }
+        } else
+        {
+            System.IO.File.Copy(fileName, TempDirectory);
         }
         fileName = TempDirectory;
         
