@@ -65,6 +65,18 @@ class Program
 
                             Console.WriteLine(newUrl);
                         }
+                        if(stringValue.StartsWith("http://peppy.chigau.com/upload.php"))
+                        {
+                            string newUrl = stringValue.Replace("peppy.chigau.com/upload.php", "osu.lekuru.xyz/web/osu-bmsubmit-upload.php");
+                            method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, newUrl);
+                            Console.WriteLine(newUrl);
+                        }
+                        if (stringValue.StartsWith("http://peppy.chigau.com/novideo.php"))
+                        {
+                            string newUrl = stringValue.Replace("peppy.chigau.com/novideo.php", "osu.lekuru.xyz/web/osu-bmsubmit-novideo.php");
+                            method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, newUrl);
+                            Console.WriteLine(newUrl);
+                        }
                     }
                     
 
