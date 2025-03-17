@@ -110,6 +110,18 @@ namespace Patcher
                             method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, patchedUrl);
                             Console.WriteLine(patchedUrl);
                         }
+                        else if (stringValue.StartsWith("http://peppy.chigau.com/bss"))
+                        {
+                            string patchedUrl = stringValue.Replace("peppy.chigau.com/bss", $"osu.{outputDomain}/d");
+                            method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, patchedUrl);
+                            Console.WriteLine(patchedUrl);
+                        }
+                        else if (stringValue.StartsWith("http://peppy.chigau.com"))
+                        {
+                            string patchedUrl = stringValue.Replace("peppy.chigau.com", $"osu.{outputDomain}");
+                            method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, patchedUrl);
+                            Console.WriteLine(patchedUrl);
+                        }
                     }
                 }
             }
