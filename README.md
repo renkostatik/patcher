@@ -39,7 +39,7 @@ Clone the project and go into the directory:
 git clone https://github.com/osuTitanic/titanic-patcher.git && cd titanic-patcher
 ```
 
-Build or publish the binary:
+Finally build the binary:
 
 ```shell
 dotnet build --configuration Release
