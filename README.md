@@ -44,7 +44,7 @@ cd ./Patcher/bin/Release/<your-dotnet-version>/<your-target>/
 or publish it, to produce a single binary:
 
 ```shell
-dotnet publish
+dotnet publish Patcher
 cd ./Patcher/bin/Release/<your-dotnet-version>/<your-target>/publish/
 ./osu-patcher
 ```
