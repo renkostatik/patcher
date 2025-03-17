@@ -54,3 +54,21 @@ dotnet publish Patcher
 cd ./Patcher/bin/Release/<your-dotnet-version>/<your-target>/publish/
 ./osu-patcher
 ```
+
+## .NET Framework Clients
+
+You may run into issues when deobfuscating osu! clients that use .NET Framework 4.  
+In that case, the solution would be to manually [download](https://github.com/vee2xx/de4dot-built-binaries) or [build](https://github.com/de4dot/de4dot) de4dot, targeting the .NET Framework 4.5 version.
+
+Due to the annoying obfuscation techniques used by eazfuscator, we have to make some adjustments to the de4dot command, like this:
+
+```shell
+de4dot --preserve-tokens --dont-rename --keep-types --keep-names ntpefmagd --preserve-table all,-pd "osu!.exe"
+```
+
+This ensures that only the strings will be deobfuscated and the rest will stay the same.  
+Now you are able to use the patcher again, to do the rest:
+
+```shell
+osu-patcher --output "./osu-fixed.exe"
+```
