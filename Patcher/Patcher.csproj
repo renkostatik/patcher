@@ -8,6 +8,7 @@
     <Platforms>AnyCPU;x86;x64</Platforms>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
+    <AssemblyName>osu-patcher</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>

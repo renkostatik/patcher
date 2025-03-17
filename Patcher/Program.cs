@@ -23,7 +23,7 @@ namespace Patcher
     {
         static void PrintHelp()
         {
-            Console.WriteLine("Usage: osu_patcher [options]");
+            Console.WriteLine("Usage: osu-patcher [options]");
             Console.WriteLine("Options:");
             Console.WriteLine("  --output <file>          Set output assembly name (default: osu!patched.exe)");
             Console.WriteLine("  --dir <directory>        Set the directory path (default: ./)");
