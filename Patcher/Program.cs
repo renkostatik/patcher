@@ -1,85 +1,113 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Net;
+using System.IO;
+using System.Linq;
+using System.Collections.Generic;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+class Config
+{
+    public string OutputAssemblyName { get; set; } = "osu!patched.exe";
+    public string DirectoryPath { get; set; } = "./";
+    public string InputDomain { get; set; } = "ppy.sh";
+    public string OutputDomain { get; set; } = "titanic.sh";
+    public string BanchoIP { get; set; } = "176.57.150.202";
+    public bool Deobfuscate { get; set; } = false;
+}
+
 class Program
 {
-    static void PatchDomains(AssemblyDefinition assembly, string domain)
+    static void PrintHelp()
+    {
+        Console.WriteLine("Usage: osu_patcher [options]");
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --output <file>          Set output assembly name (default: osu!patched.exe)");
+        Console.WriteLine("  --dir <directory>        Set the directory path (default: ./)");
+        Console.WriteLine("  --input-domain <domain>  Set input domain to replace (default: ppy.sh)");
+        Console.WriteLine("  --output-domain <domain> Set output domain to replace with (default: titanic.sh)");
+        Console.WriteLine("  --bancho-ip <ip>         Set Bancho IP (default: 176.57.150.202)");
+        Console.WriteLine("  --deobfuscate            Automatically deobfuscate the binary with de4dot");
+        Console.WriteLine("  --help                   Show this help message and exit");
+        Environment.Exit(0);
+    }
+
+    static Config ParseArguments(string[] args)
+    {
+        var config = new Config();
+        
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--help":
+                    PrintHelp();
+                    break;
+                case "--output":
+                    if (i + 1 < args.Length) config.OutputAssemblyName = args[++i];
+                    break;
+                case "--dir":
+                    if (i + 1 < args.Length) config.DirectoryPath = args[++i];
+                    break;
+                case "--input-domain":
+                    if (i + 1 < args.Length) config.InputDomain = args[++i];
+                    break;
+                case "--output-domain":
+                    if (i + 1 < args.Length) config.OutputDomain = args[++i];
+                    break;
+                case "--bancho-ip":
+                    if (i + 1 < args.Length) config.BanchoIP = args[++i];
+                    break;
+                case "--deobfuscate":
+                    config.Deobfuscate = true;
+                    break;
+                default:
+                    Console.WriteLine("Unknown argument: " + args[i]);
+                    break;
+            }
+        }
+        return config;
+    }
+
+    static void PatchDomains(AssemblyDefinition assembly, string inputDomain, string outputDomain)
     {
         Console.WriteLine("Patching domains...");
 
         // Select all methods with bodies in the assembly
-        IEnumerable<MethodDefinition> methods = assembly.Modules.SelectMany(
+        var methods = assembly.Modules.SelectMany(
             module => module.Types.SelectMany(
                 type => type.Methods.Where(method => method.HasBody)
             )
         );
-
+        
         foreach (var method in methods)
         {
             for (int i = 0; i < method.Body.Instructions.Count; i++)
             {
-                Instruction instruction = method.Body.Instructions[i];
-
+                var instruction = method.Body.Instructions[i];
+                
                 if (instruction.OpCode == OpCodes.Ldstr && instruction.Operand is string stringValue)
                 {
-                    if(domain == "127.0.0.1" || domain == "localhost" || domain.Contains("192.168.0."))
+                    if (stringValue.Contains(inputDomain))
                     {
-                        if (stringValue.Contains("ppy.sh"))
-                        {
-                            string[] test = stringValue.Split('/');
-                            string newUrl = "";
-                            try
-                            {
-                                if (test[0].Contains("http"))
-                                {
-                                    newUrl = stringValue.Replace(test[2], domain); // if we are localhost we don't want to change our url to *.127.0.0.1
-                                } else
-                                {
-                                    newUrl = stringValue.Replace(test[0], domain); // if we are localhost we don't want to change our url to *.127.0.0.1
-                                }
-                                
-                            } catch (Exception ex)
-                            {
-                                Console.WriteLine($"shit broke: {ex.Message}");
-                            }
-
-
-
-                            // Update the instruction with the new string value
-                            method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, newUrl);
-
-                            Console.WriteLine(newUrl);
-                        }
-                    } else
-                    {
-                        if (stringValue.Contains("ppy.sh"))
-                        {
-                            // Replace the old domain with the new domain
-                            string newUrl = stringValue.Replace("ppy.sh", domain);
-
-                            // Update the instruction with the new string value
-                            method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, newUrl);
-
-                            Console.WriteLine(newUrl);
-                        }
-                        if(stringValue.StartsWith("http://peppy.chigau.com/upload.php"))
-                        {
-                            string newUrl = stringValue.Replace("peppy.chigau.com/upload.php", "osu.lekuru.xyz/web/osu-bmsubmit-upload.php");
-                            method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, newUrl);
-                            Console.WriteLine(newUrl);
-                        }
-                        if (stringValue.StartsWith("http://peppy.chigau.com/novideo.php"))
-                        {
-                            string newUrl = stringValue.Replace("peppy.chigau.com/novideo.php", "osu.lekuru.xyz/web/osu-bmsubmit-novideo.php");
-                            method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, newUrl);
-                            Console.WriteLine(newUrl);
-                        }
+                        // Update the instruction with the new string value
+                        string patchedUrl = stringValue.Replace(inputDomain, outputDomain);
+                        method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, patchedUrl);
+                        Console.WriteLine(patchedUrl);
                     }
-                    
-
+                    else if (stringValue.StartsWith("http://peppy.chigau.com/upload.php"))
+                    {
+                        string patchedUrl = stringValue.Replace("peppy.chigau.com/upload.php", $"osu.{outputDomain}/web/osu-bmsubmit-upload.php");
+                        method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, patchedUrl);
+                        Console.WriteLine(patchedUrl);
+                    }
+                    else if (stringValue.StartsWith("http://peppy.chigau.com/novideo.php"))
+                    {
+                        string patchedUrl = stringValue.Replace("peppy.chigau.com/novideo.php", $"osu.{outputDomain}/web/osu-bmsubmit-novideo.php");
+                        method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, patchedUrl);
+                        Console.WriteLine(patchedUrl);
+                    }
                 }
             }
         }
@@ -87,248 +115,169 @@ class Program
         Console.WriteLine("Done.");
     }
 
-    static void PatchBanchoIP(AssemblyDefinition assembly, string ip)
+    static bool ContainsBanchoIP(AssemblyDefinition assembly, string inputDomain)
     {
-        Console.WriteLine("Patching bancho ip...");
-
         // Select all methods with bodies in the assembly
-        IEnumerable<MethodDefinition> methods = assembly.Modules.SelectMany(
+        var methods = assembly.Modules.SelectMany(
             module => module.Types.SelectMany(
                 type => type.Methods.Where(method => method.HasBody)
             )
         );
 
+        // If the assembly contains the http bancho url, we
+        // know that it does not contain a bancho ip.
         foreach (var method in methods)
         {
-            bool found = false;
-
-            // Check if the method contains the string "Connecting to Bancho"
-            foreach (Instruction instruction in method.Body.Instructions)
+            for (int i = 0; i < method.Body.Instructions.Count; i++)
             {
+                var instruction = method.Body.Instructions[i];
+                
                 if (instruction.OpCode == OpCodes.Ldstr && instruction.Operand is string stringValue)
                 {
-                    if (stringValue.Contains("Connecting to Bancho"))
+                    if (stringValue.Contains($"c.{inputDomain}"))
                     {
-                        found = true;
-                        break;
+                        return false;
                     }
                 }
             }
+        }
 
-            if (!found)
-                continue;
+        return true;
+    }
 
+    static long IpToDecimal(string ipAddress)
+    {
+        IPAddress ip = IPAddress.Parse(ipAddress);
+        byte[] bytes = ip.GetAddressBytes();
+        return BitConverter.ToUInt32(bytes, 0);
+    }
+
+    static void PatchBanchoIP(AssemblyDefinition assembly, string ip)
+    {
+        Console.WriteLine("Patching Bancho IP...");
+
+        // Select all methods with bodies in the assembly
+        var methods = assembly.Modules.SelectMany(
+            module => module.Types.SelectMany(
+                type => type.Methods.Where(method => method.HasBody)
+            )
+        );
+        
+        List<string> ipList = new List<string>
+        {
+            "50.23.74.93", "219.117.212.118", "192.168.1.106", "174.34.145.226", "216.6.228.50",
+            "50.228.6.216", "69.147.233.10", "167.83.161.203", "10.233.147.69", "1.0.0.127",
+            "53.228.6.216", "52.228.6.216", "51.228.6.216", "50.228.6.216", "151.0.0.10"
+        };
+
+        List<long> ipListDecimal = ipList.Select(ipStr => IpToDecimal(ipStr)).ToList();
+        long newIpDecimal = IpToDecimal(ip);
+
+        foreach (var method in methods)
+        {
             for (int i = 0; i < method.Body.Instructions.Count; i++)
             {
                 Instruction instruction = method.Body.Instructions[i];
+                Instruction? followingInstruction = null;
 
-                if ((instruction.OpCode == OpCodes.Newobj || instruction.OpCode == OpCodes.Call) &&
-                    instruction.Operand is MethodReference methodRef &&
-                    methodRef.DeclaringType.FullName == "System.Net.IPEndPoint")
+                if (i + 1 < method.Body.Instructions.Count)
                 {
-                    // Check if this is a constructor or method creating an IPEndPoint
-                    if (methodRef.Name == ".ctor" || methodRef.Name == "Create")
+                    followingInstruction = method.Body.Instructions[i + 1];
+                }
+                
+                if (instruction.OpCode == OpCodes.Ldc_I4 && ipListDecimal.Contains((int)instruction.Operand))
+                {
+                    method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldc_I8, newIpDecimal);
+                    Console.WriteLine($"Replaced IP: {instruction.Operand} -> {newIpDecimal}");
+
+                    if (followingInstruction != null && followingInstruction.OpCode == OpCodes.Conv_I8)
                     {
-                        long ipDecimal = IPAddress.Parse(ip).Address;
-
-                        // Skip these ldc.i4 values
-                        List<int> skip = new List<int>()
-                        {
-                            13380,
-                            13381,
-                            13382,
-                            13383
-                        };
-
-                        // Iterate through the sorrounding instructions to find the ldc.i4 matches
-                        // Replace the matches with the new ip address
-                        for (int j = 0; j < 12; j++)
-                        {
-                            object value = method.Body.Instructions[i - j].Operand;
-                            OpCode code = method.Body.Instructions[i - j].OpCode;
-
-                            if (code == OpCodes.Ldc_I4)
-                            {
-                                if (skip.Contains((int)value))
-                                    continue;
-
-                                if ((int)value < 16700000)
-                            	    continue;
-
-                                Console.WriteLine($"{method.Body.Instructions[i - j]} -> {ipDecimal} ({ip})");
-                                method.Body.Instructions[i - j] = Instruction.Create(OpCodes.Ldc_I4, (int)ipDecimal);
-                            }
-
-                            if (code == OpCodes.Ldc_I8)
-                            {
-                                if ((long)value < 16700000)
-                            	    continue;
-
-                                Console.WriteLine($"{method.Body.Instructions[i - j]} -> {ipDecimal} ({ip})");
-                                method.Body.Instructions[i - j] = Instruction.Create(OpCodes.Ldc_I8, ipDecimal);
-                            }
-                        }
-
-                        Console.WriteLine("Done.");
+                        // Conv_I8 instructions will make it crash, so let's remove them
+                        method.Body.Instructions[i - 1] = Instruction.Create(OpCodes.Nop);
                     }
+                    continue;
+                }
+
+                if (instruction.OpCode == OpCodes.Ldc_I8 && ipListDecimal.Contains((long)instruction.Operand))
+                {
+                    method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldc_I8, newIpDecimal);
+                    Console.WriteLine($"Replaced IP: {instruction.Operand} -> {newIpDecimal}");
+                    continue;
+                }
+
+                if (instruction.OpCode == OpCodes.Ldstr && ipList.Contains((string)instruction.Operand))
+                {
+                    method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, ip);
+                    Console.WriteLine($"Replaced IP: {(string)instruction.Operand} -> {ip}");
+                    continue;
                 }
             }
         }
+
+        Console.WriteLine("Done.");
     }
 
-    static int Deobfuscate(string assemblyPath, string newAssemblyPath, string de4dotPath)
+    static string DeobfuscateOsuExecutable(string executablePath)
     {
-        Console.WriteLine("Deobfuscating...");
-
-        using (Process process = new Process())
-        {
-            process.StartInfo.FileName = "dotnet";
-            process.StartInfo.Arguments = $"{de4dotPath} {assemblyPath} -o {newAssemblyPath}";
-            process.StartInfo.RedirectStandardOutput = true;
-            process.StartInfo.RedirectStandardError = true;
-            process.StartInfo.UseShellExecute = false;
-            process.StartInfo.CreateNoWindow = true;
-
-            // Start the de4dot
-            process.Start();
-
-            // Read the output and error stream
-            Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-            Task<string> errorTask = process.StandardError.ReadToEndAsync();
-
-            // Wait for both streams to be fully read
-            Task.WaitAll(outputTask, errorTask);
-
-            // make sure that the output is captured
-            string output = outputTask.Result;
-            string error = errorTask.Result;
-
-            Console.WriteLine($"{output}");
-            if (error != "")
-                Console.WriteLine($"de4dot Error:\n{error}");
-
-
-            // Wait for the de4dot to deobfuscate
-            process.WaitForExit();
-
-            return process.ExitCode;
-        }
+        var newExecutable = "deobfuscated.exe";
+        Console.WriteLine("Deobfuscation is currently not implemented!");
+        File.Copy(executablePath, newExecutable);
+        // TODO: Deobfuscate the binary & return new path
+        return newExecutable;
     }
 
-    public static int DisplayFailedError()
+    static string FindOsuExecutable(string directory)
     {
-        Console.WriteLine("Deobfuscation Failed, Do you wanna continue Patching or exit Patcher Y/N");
-        ConsoleKeyInfo key = Console.ReadKey();
-        if (key.Key == ConsoleKey.Y)
-        {
-            return 1;
-        }
-        else if (key.Key == ConsoleKey.N)
-        {
-            Console.WriteLine("Ok. Exitting...");
-            return 0;
-        }
-        else
-        {
-            return DisplayFailedError();
-        }
+        string[] validFiles = { "osu!.exe", "osu.exe", "osu!test.exe", "osu!shine1.exe" };
+        return validFiles.Select(file => Path.Combine(directory, file)).FirstOrDefault(File.Exists);
     }
-    static void Main()
+
+    static void Main(string[] args)
     {
-        // TODO move it to some sort of config instead of arguments or support both the args and the config
-        string assemblyPath = "./assemblies/osu!.exe";
-        string outputPath = "./osu!Patched.exe";
-        string domain = "lekuru.xyz";
-        string ip = "176.57.150.202";
-        string de4dotPath = "C:\\de4dot\\netcoreapp2.1\\de4dot.dll";
-        bool skipdeob = false;
+        Config config = ParseArguments(args);
+        bool removeExecutable = false;
 
-        foreach (string arg in Environment.GetCommandLineArgs().Skip(1))
+        if (!Directory.Exists(config.DirectoryPath))
         {
-            var split = arg.Split('=');
-            if (split.Length != 2) {
-                Console.WriteLine($"Invalid argument: {arg}");
-                Console.WriteLine("Usage: --ip=<ip> --domain=<domain> --assembly=<path> --output=<path>");
-                System.Environment.Exit(1);
-            }
-            switch (split[0]) {
-                case "--ip":
-                    ip = split[1];
-                    break;
-                case "-d":
-                case "--domain":
-                    domain = split[1];
-                    break;
-                case "-a":
-                case "--assembly":
-                    assemblyPath = split[1];
-                    break;
-                case "-o":
-                case "--output":
-                    outputPath = split[1];
-                    break;
-                case "--skipd":
-                    skipdeob = true;
-                    break;
-                default:
-                    Console.WriteLine($"Invalid argument: {arg}");
-                    Console.WriteLine("Usage: --ip=<ip> --domain=<domain> --assembly=<path> --output=<path>");
-                    System.Environment.Exit(1);
-                    break;
-            }
+            Console.WriteLine("Directory not found!");
+            Environment.Exit(1);
+        }
+        Directory.SetCurrentDirectory(config.DirectoryPath);
+
+        string osuExe = FindOsuExecutable(".");
+        if (osuExe == null)
+        {
+            Console.WriteLine("osu! executable not found!");
+            Environment.Exit(1);
         }
 
-        string outputAssemblyPath = Path.GetFullPath(outputPath);
-        string fileName = Path.GetFileName(assemblyPath);
-        
-        string? directoryPath = Path.GetDirectoryName(assemblyPath);
-
-        if (!Directory.Exists(directoryPath)) {
-            Console.WriteLine("Directory could not be found!");
-            System.Environment.Exit(1);
-        }
-        
-        if (!string.IsNullOrEmpty(directoryPath))
-            Directory.SetCurrentDirectory(directoryPath);
-
-        
-        string TempDirectory = Path.GetTempFileName() + new Random().Next(1,200000);
-        //Console.WriteLine(TempDirectory);
-        if(!skipdeob)
+        if (config.Deobfuscate)
         {
-            var result = Deobfuscate(assemblyPath, TempDirectory, de4dotPath);
-            if (result == 0)
-            {
-                Console.WriteLine("Deobfuscation was succesful");
-                // do nothing(for now)
-            }
-            else
-            {
-
-                DisplayFailedError();
-            }
-        } else
-        {
-            System.IO.File.Copy(fileName, TempDirectory);
-        }
-        fileName = TempDirectory;
-        
-
-        Console.WriteLine(fileName);
-        if (!File.Exists(fileName))
-        {
-            Console.WriteLine("File could not be found!");
-            System.Environment.Exit(1);
+            osuExe = DeobfuscateOsuExecutable(osuExe);
+            removeExecutable = true;
         }
 
         Console.WriteLine("Loading assembly...");
-        AssemblyDefinition assembly = AssemblyDefinition.ReadAssembly(fileName);
+        AssemblyDefinition assembly = AssemblyDefinition.ReadAssembly(osuExe);
 
-        PatchDomains(assembly, domain);
-        PatchBanchoIP(assembly, ip);
+        if (ContainsBanchoIP(assembly, config.InputDomain))
+        {
+            // We have a tcp client -> try to patch bancho ip
+            PatchBanchoIP(assembly, config.BanchoIP);
+        }
+
+        // Replace all domains
+        PatchDomains(assembly, config.InputDomain, config.OutputDomain);
 
         Console.WriteLine("Writing new assembly...");
-        assembly.Write("osu!.exe");
+        assembly.Write(config.OutputAssemblyName);
+        assembly.Dispose();
+
+        if (removeExecutable)
+        {
+            Console.WriteLine("Removing deobfuscated executable...");
+            File.Delete(osuExe);
+        }
         
         Console.WriteLine("Done.");
     }
