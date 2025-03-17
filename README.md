@@ -23,6 +23,12 @@ Options:
   --help                   Show this help message and exit
 ```
 
+## Example
+
+Here is a simple example of how it could look:
+
+https://github.com/user-attachments/assets/08c56048-2c89-4fc0-9d9d-a9106836a0d3
+
 ## Building
 
 To build the project yourself, be sure to have [.NET 8.0](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) installed, .NET 6.0 or higher will work as well, when changing the project version.
