@@ -166,11 +166,11 @@ namespace Patcher
             );
 
             List<string> ipList = new List<string>
-        {
-            "50.23.74.93", "219.117.212.118", "192.168.1.106", "174.34.145.226", "216.6.228.50",
-            "50.228.6.216", "69.147.233.10", "167.83.161.203", "10.233.147.69", "1.0.0.127",
-            "53.228.6.216", "52.228.6.216", "51.228.6.216", "50.228.6.216", "151.0.0.10"
-        };
+            {
+                "50.23.74.93", "219.117.212.118", "192.168.1.106", "174.34.145.226", "216.6.228.50",
+                "50.228.6.216", "69.147.233.10", "167.83.161.203", "10.233.147.69", "1.0.0.127",
+                "53.228.6.216", "52.228.6.216", "51.228.6.216", "50.228.6.216", "151.0.0.10"
+            };
 
             List<long> ipListDecimal = ipList.Select(ipStr => IpToDecimal(ipStr)).ToList();
             long newIpDecimal = IpToDecimal(ip);
@@ -222,16 +222,26 @@ namespace Patcher
         static string DeobfuscateOsuExecutable(string executablePath)
         {
             Console.WriteLine("Deobfuscating...");
-            var newExecutable = Path.GetFileNameWithoutExtension(executablePath) + ".deobfuscated.exe";
-            var status = Deobfuscator.Deobfuscate(new string[] { executablePath, "-o", newExecutable });
+            var outputExecutable = Path.GetFileNameWithoutExtension(executablePath) + ".deobfuscated.exe";
+            var status = Deobfuscator.Deobfuscate(new string[] {
+                executablePath,
+                "-o", outputExecutable,
+                // Only deobfuscate strings, and leave
+                // everything else untouched
+                "--preserve-tokens",
+                "--dont-rename",
+                "--keep-types",
+                "--keep-names", "ntpefmagd",
+                "--preserve-table", "all,-pd"
+            });
 
             if (status != 0)
             {
                 Console.WriteLine("Deobfuscation failed!");
-                Environment.Exit(1);
+                Environment.Exit(status);
             }
 
-            return newExecutable;
+            return outputExecutable;
         }
 
         static string FindOsuExecutable(string directory)
@@ -243,7 +253,6 @@ namespace Patcher
         static void Main(string[] args)
         {
             Config config = ParseArguments(args);
-            bool removeExecutable = false;
 
             if (!Directory.Exists(config.DirectoryPath))
             {
@@ -262,7 +271,6 @@ namespace Patcher
             if (config.Deobfuscate)
             {
                 osuExe = DeobfuscateOsuExecutable(osuExe);
-                removeExecutable = true;
             }
 
             Console.WriteLine("Loading assembly...");
@@ -281,7 +289,7 @@ namespace Patcher
             assembly.Write(config.OutputAssemblyName);
             assembly.Dispose();
 
-            if (removeExecutable)
+            if (config.Deobfuscate)
             {
                 Console.WriteLine("Removing deobfuscated executable...");
                 File.Delete(osuExe);
