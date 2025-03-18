@@ -1,9 +1,4 @@
-﻿using System;
-using System.Diagnostics;
-using System.Net;
-using System.IO;
-using System.Linq;
-using System.Collections.Generic;
+﻿using System.Net;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -15,7 +10,7 @@ namespace Patcher
         public string DirectoryPath { get; set; } = "./";
         public string InputDomain { get; set; } = "ppy.sh";
         public string OutputDomain { get; set; } = "titanic.sh";
-        public string BanchoIP { get; set; } = "176.57.150.202";
+        public string BanchoIp { get; set; } = "176.57.150.202";
         public bool Deobfuscate { get; set; } = false;
     }
 
@@ -59,7 +54,7 @@ namespace Patcher
                         if (i + 1 < args.Length) config.OutputDomain = args[++i];
                         break;
                     case "--bancho-ip":
-                        if (i + 1 < args.Length) config.BanchoIP = args[++i];
+                        if (i + 1 < args.Length) config.BanchoIp = args[++i];
                         break;
                     case "--deobfuscate":
                         config.Deobfuscate = true;
@@ -129,7 +124,7 @@ namespace Patcher
             Console.WriteLine("Done.");
         }
 
-        static bool ContainsBanchoIP(AssemblyDefinition assembly, string inputDomain)
+        static bool ContainsBanchoIp(AssemblyDefinition assembly, string inputDomain)
         {
             // Select all methods with bodies in the assembly
             var methods = assembly.Modules.SelectMany(
@@ -166,7 +161,7 @@ namespace Patcher
             return BitConverter.ToUInt32(bytes, 0);
         }
 
-        static void PatchBanchoIP(AssemblyDefinition assembly, string ip)
+        static void PatchBanchoIp(AssemblyDefinition assembly, string ip)
         {
             Console.WriteLine("Patching Bancho IP...");
 
@@ -256,9 +251,9 @@ namespace Patcher
             return outputExecutable;
         }
 
-        static string FindOsuExecutable(string directory)
+        static string? FindOsuExecutable(string directory)
         {
-            string[] validFiles = { "osu!.exe", "osu.exe", "osu!test.exe", "osu!shine1.exe" };
+            string[] validFiles = { "osu!.exe", "osu.exe", "osu!test.exe", "osu!public.exe", "osu!shine1.exe", "osu!cuttingedge.exe" };
             return validFiles.Select(file => Path.Combine(directory, file)).FirstOrDefault(File.Exists);
         }
 
@@ -273,7 +268,7 @@ namespace Patcher
             }
             Directory.SetCurrentDirectory(config.DirectoryPath);
 
-            string osuExe = FindOsuExecutable(".");
+            string? osuExe = FindOsuExecutable(".");
             if (osuExe == null)
             {
                 Console.WriteLine("osu! executable not found!");
@@ -288,10 +283,10 @@ namespace Patcher
             Console.WriteLine("Loading assembly...");
             AssemblyDefinition assembly = AssemblyDefinition.ReadAssembly(osuExe);
 
-            if (ContainsBanchoIP(assembly, config.InputDomain))
+            if (ContainsBanchoIp(assembly, config.InputDomain))
             {
                 // We have a tcp client -> try to patch bancho ip
-                PatchBanchoIP(assembly, config.BanchoIP);
+                PatchBanchoIp(assembly, config.BanchoIp);
             }
 
             // Replace all domains
