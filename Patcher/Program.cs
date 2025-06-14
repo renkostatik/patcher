@@ -253,7 +253,6 @@ namespace Patcher
             {
                 var il = method.Body.GetILProcessor();
                 
-                // Replace Encoding.Default with Encoding.UTF8 in this method
                 foreach (var instruction in method.Body.Instructions)
                 {
                     if (instruction.OpCode == OpCodes.Call &&
