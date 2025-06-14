@@ -130,7 +130,7 @@ namespace Patcher
             Console.WriteLine("Done.");
         }
 
-        static bool ContainsBanchoIp(AssemblyDefinition assembly, string inputDomain)
+        static bool ContainsString(AssemblyDefinition assembly, string input)
         {
             // Select all methods with bodies in the assembly
             var methods = assembly.Modules.SelectMany(
@@ -149,7 +149,7 @@ namespace Patcher
 
                     if (instruction.OpCode == OpCodes.Ldstr && instruction.Operand is string stringValue)
                     {
-                        if (stringValue.Contains($"c.{inputDomain}"))
+                        if (stringValue.Contains(input))
                         {
                             return false;
                         }
@@ -341,7 +341,10 @@ namespace Patcher
             Console.WriteLine("Loading assembly...");
             AssemblyDefinition assembly = AssemblyDefinition.ReadAssembly(osuExe);
 
-            if (ContainsBanchoIp(assembly, config.InputDomain))
+            var isHttpBancho = ContainsString(assembly, $"c.{config.InputDomain}");
+            var isIrcClient = ContainsString(assembly, $"irc.{config.InputDomain}");
+
+            if (!isHttpBancho && !isIrcClient)
             {
                 // We have a tcp client -> try to patch bancho ip
                 PatchBanchoIp(assembly, config.BanchoIp);
