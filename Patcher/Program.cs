@@ -235,9 +235,13 @@ namespace Patcher
         static void FixNetLibEncoding(AssemblyDefinition assembly)
         {
             Console.WriteLine("Fixing NetLib encoding...");
+            
+            // Resolve UTF8Encoding class & find a constructor
+            var utf8CtorInfo = typeof(System.Text.UTF8Encoding).GetConstructor(new[] { typeof(bool) });
+            var utf8CtorRef = assembly.MainModule.ImportReference(utf8CtorInfo);
 
             // Find all methods that use StreamWriter
-            var methodsWithStreamWriter = assembly.MainModule.Types
+            var validMethods = assembly.MainModule.Types
                 .SelectMany(t => t.NestedTypes.Concat(new[] { t }))
                 .SelectMany(t => t.Methods.Where(m => m.HasBody && m.Parameters.Count == 2))
                 .Where(m => m.Body.Instructions.Any(instr =>
@@ -245,8 +249,10 @@ namespace Patcher
                     instr.Operand is MethodReference mr &&
                     mr.DeclaringType.Name == "StreamWriter"));
 
-            foreach (var method in methodsWithStreamWriter)
+            foreach (var method in validMethods)
             {
+                var il = method.Body.GetILProcessor();
+                
                 // Replace Encoding.Default with Encoding.UTF8 in this method
                 foreach (var instruction in method.Body.Instructions)
                 {
@@ -255,33 +261,21 @@ namespace Patcher
                         methodRef.Name == "get_Default" &&
                         methodRef.DeclaringType.FullName == "System.Text.Encoding")
                     {
-                        // Resolve UTF8Encoding class & find a constructor
-                        var utf8EncodingType = assembly.MainModule.ImportReference(typeof(System.Text.UTF8Encoding)).Resolve();
-                        var utf8Constructor = utf8EncodingType.Methods.FirstOrDefault(m =>
-                            m.IsConstructor &&
-                            m.Parameters.Count == 1 &&
-                            m.Parameters[0].ParameterType.FullName == "System.Boolean");
-
-                        if (utf8Constructor == null)
-                        {
-                            Console.WriteLine("Could not find UTF8Encoding(bool) constructor.");
-                            continue;
-                        }
-
-                        // Determine the offset of the instruction
-                        var uf8Offset = instruction.Offset - 4;
-                        var utf8CtorRef = assembly.MainModule.ImportReference(utf8Constructor);
+                        var falseArgument = Instruction.Create(OpCodes.Ldc_I4_0);
+                        var utf8Encoding = Instruction.Create(OpCodes.Newobj, utf8CtorRef);
                         
                         // Replace the existing Encoding.Default call with "new UTF8Encoding(false)"
-                        method.Body.Instructions[uf8Offset] = Instruction.Create(OpCodes.Newobj, utf8CtorRef);
-                        method.Body.Instructions.Insert(uf8Offset, Instruction.Create(OpCodes.Ldc_I4_0));
+                        il.InsertBefore(instruction, falseArgument);
+                        il.InsertAfter(instruction, utf8Encoding);
+                        il.Remove(instruction);
+                        
                         Console.WriteLine($"Replaced {instruction.Operand} with UTF8 Encoding in {method.FullName}");
-                        break;
+                        return;
                     }
                 }
+                
+                Console.WriteLine("Failed to patch netlib encoding.");
             }
-
-            Console.WriteLine("Done.");
         }
 
         static string DeobfuscateOsuExecutable(string executablePath)
