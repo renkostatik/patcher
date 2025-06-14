@@ -1,6 +1,8 @@
 ﻿using System.Net;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using System.Runtime.InteropServices;
+// ReSharper disable All
 
 namespace Patcher
 {
@@ -11,10 +13,12 @@ namespace Patcher
         public string InputDomain { get; set; } = "ppy.sh";
         public string OutputDomain { get; set; } = "titanic.sh";
         public string BanchoIp { get; set; } = "176.57.150.202";
-        public bool Deobfuscate { get; set; } = false;
+        public string? MscorlibPath { get; set; }
+        public bool Deobfuscate { get; set; }
+        public bool FixNetLib { get; set; }
     }
 
-    class Program
+    static class Program
     {
         static void PrintHelp()
         {
@@ -26,6 +30,8 @@ namespace Patcher
             Console.WriteLine("  --output-domain <domain> Set output domain to replace with (default: titanic.sh)");
             Console.WriteLine("  --bancho-ip <ip>         Set Bancho IP (default: 176.57.150.202)");
             Console.WriteLine("  --deobfuscate            Automatically deobfuscate the binary with de4dot");
+            Console.WriteLine("  --fix-netlib             Fix issues with netlib data encoding");
+            Console.WriteLine("  --mscorlib-path          Specify your path to mscorlib.dll");
             Console.WriteLine("  --help                   Show this help message and exit");
             Environment.Exit(0);
         }
@@ -56,8 +62,14 @@ namespace Patcher
                     case "--bancho-ip":
                         if (i + 1 < args.Length) config.BanchoIp = args[++i];
                         break;
+                    case "--mscorlib-path":
+                        if (i + 1 < args.Length) config.MscorlibPath = args[++i];
+                        break;
                     case "--deobfuscate":
                         config.Deobfuscate = true;
+                        break;
+                    case "--fix-netlib":
+                        config.FixNetLib = true;
                         break;
                     default:
                         Console.WriteLine("Unknown argument: " + args[i]);
@@ -124,7 +136,7 @@ namespace Patcher
             Console.WriteLine("Done.");
         }
 
-        static bool ContainsBanchoIp(AssemblyDefinition assembly, string inputDomain)
+        static bool ContainsString(AssemblyDefinition assembly, string input)
         {
             // Select all methods with bodies in the assembly
             var methods = assembly.Modules.SelectMany(
@@ -137,21 +149,19 @@ namespace Patcher
             // know that it does not contain a bancho ip.
             foreach (var method in methods)
             {
-                for (int i = 0; i < method.Body.Instructions.Count; i++)
+                foreach (var instruction in method.Body.Instructions)
                 {
-                    var instruction = method.Body.Instructions[i];
-
                     if (instruction.OpCode == OpCodes.Ldstr && instruction.Operand is string stringValue)
                     {
-                        if (stringValue.Contains($"c.{inputDomain}"))
+                        if (stringValue.Contains(input))
                         {
-                            return false;
+                            return true;
                         }
                     }
                 }
             }
 
-            return true;
+            return false;
         }
 
         static long IpToDecimal(string ipAddress)
@@ -172,14 +182,14 @@ namespace Patcher
                 )
             );
 
-            List<string> ipList = new List<string>
-            {
+            List<string> ipList =
+            [
                 "50.23.74.93", "219.117.212.118", "192.168.1.106", "174.34.145.226", "216.6.228.50",
                 "50.228.6.216", "69.147.233.10", "167.83.161.203", "10.233.147.69", "1.0.0.127",
                 "53.228.6.216", "52.228.6.216", "51.228.6.216", "50.228.6.216", "151.0.0.10"
-            };
+            ];
 
-            List<long> ipListDecimal = ipList.Select(ipStr => IpToDecimal(ipStr)).ToList();
+            List<long> ipListDecimal = ipList.Select(IpToDecimal).ToList();
             long newIpDecimal = IpToDecimal(ip);
 
             foreach (var method in methods)
@@ -226,11 +236,75 @@ namespace Patcher
             Console.WriteLine("Done.");
         }
 
+        static void FixNetLibEncoding(AssemblyDefinition assembly, BaseAssemblyResolver resolver)
+        {
+            Console.WriteLine("Fixing NetLib encoding...");
+
+            // Resolve `UTF8Encoding` type from mscorlib.dll
+            // This requires the resolver to be set up correctly, such that it can find a valid mscorlib.dll
+            var corlib = resolver.Resolve(assembly.MainModule.AssemblyReferences.First(r => r.Name == "mscorlib"));
+            
+            // Resolve type & import it to get a reference for later use
+            var utf8Type = corlib.MainModule.GetType("System.Text.UTF8Encoding");
+            var utf8TypeRef = assembly.MainModule.ImportReference(utf8Type);
+            
+            // Find the constructor function we want to use
+            var utf8CtorRef = new MethodReference(
+                ".ctor",
+                assembly.MainModule.TypeSystem.Void,
+                utf8TypeRef
+            ) {
+                HasThis = true,
+                Parameters = {
+                    new ParameterDefinition(
+                        "encoderShouldEmitUTF8Identifier",
+                        ParameterAttributes.None,
+                        assembly.MainModule.TypeSystem.Boolean
+                    )
+                }
+            };
+
+            // Find all methods that use StreamWriter
+            var validMethods = assembly.MainModule.Types
+                .SelectMany(t => t.NestedTypes.Concat([t]))
+                .SelectMany(t => t.Methods.Where(m => m.HasBody && m.Parameters.Count == 2))
+                .Where(m => m.Body.Instructions.Any(instr =>
+                    (instr.OpCode == OpCodes.Newobj || instr.OpCode == OpCodes.Call) &&
+                    instr.Operand is MethodReference mr &&
+                    mr.DeclaringType.Name == "StreamWriter"));
+
+            foreach (var method in validMethods)
+            {
+                var il = method.Body.GetILProcessor();
+                
+                foreach (var instruction in method.Body.Instructions)
+                {
+                    if (instruction.OpCode == OpCodes.Call &&
+                        instruction.Operand is MethodReference { Name: "get_Default" } methodRef &&
+                        methodRef.DeclaringType.FullName == "System.Text.Encoding")
+                    {
+                        var falseArgument = Instruction.Create(OpCodes.Ldc_I4_0);
+                        var utf8Encoding = Instruction.Create(OpCodes.Newobj, utf8CtorRef);
+                        
+                        // Replace the existing Encoding.Default call with "new UTF8Encoding(false)"
+                        il.InsertBefore(instruction, falseArgument);
+                        il.InsertAfter(instruction, utf8Encoding);
+                        il.Remove(instruction);
+                        
+                        Console.WriteLine($"Replaced {instruction.Operand} with UTF8 Encoding in {method.FullName}");
+                        return;
+                    }
+                }
+            }
+            
+            Console.WriteLine("Failed to patch netlib encoding.");
+        }
+
         static string DeobfuscateOsuExecutable(string executablePath)
         {
             Console.WriteLine("Deobfuscating...");
             var outputExecutable = Path.GetFileNameWithoutExtension(executablePath) + ".deobfuscated.exe";
-            var status = Deobfuscator.Deobfuscate(new string[] {
+            var status = Deobfuscator.Deobfuscate([
                 executablePath,
                 "-o", outputExecutable,
                 // Only deobfuscate strings, and leave
@@ -240,7 +314,7 @@ namespace Patcher
                 "--keep-types",
                 "--keep-names", "ntpefmagd",
                 "--preserve-table", "all,-pd"
-            });
+            ]);
 
             if (status != 0)
             {
@@ -251,10 +325,89 @@ namespace Patcher
             return outputExecutable;
         }
 
+        static string? FindOsuCommonDll(string directory)
+        {
+            string commonDllPath = Path.Combine(directory, "osu!common.dll");
+            if (File.Exists(commonDllPath)) return commonDllPath;
+            return null;
+        }
+
         static string? FindOsuExecutable(string directory)
         {
-            string[] validFiles = { "osu!.exe", "osu.exe", "osu!test.exe", "osu!public.exe", "osu!shine1.exe", "osu!cuttingedge.exe" };
+            string[] validFiles = ["osu!.exe", "osu.exe", "osu!test.exe", "osu!public.exe", "osu!shine1.exe", "osu!cuttingedge.exe"];
             return validFiles.Select(file => Path.Combine(directory, file)).FirstOrDefault(File.Exists);
+        }
+
+        static BaseAssemblyResolver CreateResolver(Config config)
+        {
+            BaseAssemblyResolver resolver = new DefaultAssemblyResolver();
+
+            if (config.MscorlibPath != null)
+            {
+                resolver.AddSearchDirectory(config.MscorlibPath);
+                resolver.AddSearchDirectory(config.DirectoryPath);
+                return resolver;
+            }
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                var validMscorlibDirectories = new[]
+                {
+                    @"C:\Windows\Microsoft.NET\Framework\v4.0.30319\",
+                    @"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\",
+                    @"C:\Windows\Microsoft.NET\Framework\v2.0.50727\",
+                    @"C:\Windows\Microsoft.NET\Framework64\v2.0.50727\"
+                };
+
+                foreach (var dir in validMscorlibDirectories)
+                {
+                    if (Directory.Exists(dir))
+                    {
+                        resolver.AddSearchDirectory(dir);
+                        break;
+                    }
+                }
+
+                resolver.AddSearchDirectory(RuntimeEnvironment.GetRuntimeDirectory());
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                if (!Directory.Exists("/usr/lib/mono/"))
+                {
+                    resolver.AddSearchDirectory(config.DirectoryPath);
+                    return resolver;
+                }
+
+                var validMonoInstallationDirectories = new []
+                {
+                    "/usr/lib/mono/4.8/",
+                    "/usr/lib/mono/4.7.2/",
+                    "/usr/lib/mono/4.7.1/",
+                    "/usr/lib/mono/4.7/",
+                    "/usr/lib/mono/4.6.2/",
+                    "/usr/lib/mono/4.6.1/",
+                    "/usr/lib/mono/4.6/",
+                    "/usr/lib/mono/4.5.2/",
+                    "/usr/lib/mono/4.5.1/",
+                    "/usr/lib/mono/4.5/",
+                    "/usr/lib/mono/4.0/",
+                    "/usr/lib/mono/3.5/",
+                    "/usr/lib/mono/3.0/",
+                    "/usr/lib/mono/2.0/",
+                };
+
+                foreach (var dir in validMonoInstallationDirectories)
+                {
+                    if (Directory.Exists(dir))
+                    {
+                        resolver.AddSearchDirectory(dir);
+                        break;
+                    }
+                }
+            }
+            
+            resolver.AddSearchDirectory(config.DirectoryPath);
+            return resolver;
         }
 
         static void Main(string[] args)
@@ -279,19 +432,46 @@ namespace Patcher
             {
                 osuExe = DeobfuscateOsuExecutable(osuExe);
             }
-
+            
             Console.WriteLine("Loading assembly...");
-            AssemblyDefinition assembly = AssemblyDefinition.ReadAssembly(osuExe);
+            BaseAssemblyResolver resolver = CreateResolver(config);
+            ReaderParameters readerParams = new ReaderParameters { AssemblyResolver = resolver };
+            AssemblyDefinition assembly = AssemblyDefinition.ReadAssembly(osuExe, readerParams);
+            
+            // Replace all domains
+            PatchDomains(assembly, config.InputDomain, config.OutputDomain);
 
-            if (ContainsBanchoIp(assembly, config.InputDomain))
+            var isHttpBancho = ContainsString(assembly, $"c.{config.InputDomain}");
+            var isIrcClient = ContainsString(assembly, $"irc.{config.InputDomain}");
+
+            if (!isHttpBancho && !isIrcClient)
             {
                 // We have a tcp client -> try to patch bancho ip
                 PatchBanchoIp(assembly, config.BanchoIp);
             }
-
-            // Replace all domains
-            PatchDomains(assembly, config.InputDomain, config.OutputDomain);
-
+            
+            if (config.FixNetLib)
+            {
+                // Check if osu!common.dll is available
+                // If not, use osu!.exe assembly
+                string? commonDll = FindOsuCommonDll(".");
+                
+                if (commonDll != null)
+                {
+                    AssemblyDefinition commonAssembly = AssemblyDefinition.ReadAssembly(commonDll);
+                    FixNetLibEncoding(commonAssembly, resolver);
+                    
+                    Console.WriteLine("Writing osu!common assembly...");
+                    commonAssembly.Write("osu!common.patched.dll");
+                    commonAssembly.Dispose();
+                }
+                else
+                {
+                    // osu!common was merged into main osu!.exe
+                    FixNetLibEncoding(assembly, resolver);
+                }
+            }
+            
             Console.WriteLine("Writing new assembly...");
             assembly.Write(config.OutputAssemblyName);
             assembly.Dispose();
