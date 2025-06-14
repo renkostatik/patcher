@@ -20,6 +20,7 @@ Options:
   --output-domain <domain> Set output domain to replace with (default: titanic.sh)
   --bancho-ip <ip>         Set Bancho IP (default: 176.57.150.202)
   --deobfuscate            Automatically deobfuscate the binary with de4dot
+  --fix-netlib             Fix issues with netlib data encoding
   --help                   Show this help message and exit
 ```
 
