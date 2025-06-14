@@ -2,6 +2,7 @@
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Cecil.Rocks;
+using System.Runtime.InteropServices;
 
 namespace Patcher
 {
@@ -12,6 +13,7 @@ namespace Patcher
         public string InputDomain { get; set; } = "ppy.sh";
         public string OutputDomain { get; set; } = "titanic.sh";
         public string BanchoIp { get; set; } = "176.57.150.202";
+        public string? MscorlibPath { get; set; } = null;
         public bool Deobfuscate { get; set; } = false;
         public bool FixNetLib { get; set; } = false;
     }
@@ -29,6 +31,7 @@ namespace Patcher
             Console.WriteLine("  --bancho-ip <ip>         Set Bancho IP (default: 176.57.150.202)");
             Console.WriteLine("  --deobfuscate            Automatically deobfuscate the binary with de4dot");
             Console.WriteLine("  --fix-netlib             Fix issues with netlib data encoding");
+            Console.WriteLine("  --mscorlib-path          Specify your path to mscorlib.dll");
             Console.WriteLine("  --help                   Show this help message and exit");
             Environment.Exit(0);
         }
@@ -58,6 +61,9 @@ namespace Patcher
                         break;
                     case "--bancho-ip":
                         if (i + 1 < args.Length) config.BanchoIp = args[++i];
+                        break;
+                    case "--mscorlib-path":
+                        if (i + 1 < args.Length) config.MscorlibPath = args[++i];
                         break;
                     case "--deobfuscate":
                         config.Deobfuscate = true;
@@ -232,13 +238,29 @@ namespace Patcher
             Console.WriteLine("Done.");
         }
 
-        static void FixNetLibEncoding(AssemblyDefinition assembly)
+        static void FixNetLibEncoding(AssemblyDefinition assembly, BaseAssemblyResolver resolver)
         {
             Console.WriteLine("Fixing NetLib encoding...");
-            
-            // Resolve UTF8Encoding class & find a constructor
-            var utf8CtorInfo = typeof(System.Text.UTF8Encoding).GetConstructor(new[] { typeof(bool) });
-            var utf8CtorRef = assembly.MainModule.ImportReference(utf8CtorInfo);
+
+            // Resolve `UTF8Encoding` type from mscorlib.dll
+            // This requires the resolver to be set up correctly, such that it can find a valid mscorlib.dll
+            var corlib = resolver.Resolve(assembly.MainModule.AssemblyReferences.First(r => r.Name == "mscorlib"));
+            var utf8Type = corlib.MainModule.GetType("System.Text.UTF8Encoding");
+            var utf8TypeRef = assembly.MainModule.ImportReference(utf8Type);
+            var utf8CtorRef = new MethodReference(
+                ".ctor",
+                assembly.MainModule.TypeSystem.Void,
+                utf8TypeRef
+            ) {
+                HasThis = true,
+                Parameters = {
+                    new ParameterDefinition(
+                        "encoderShouldEmitUTF8Identifier",
+                        ParameterAttributes.None,
+                        assembly.MainModule.TypeSystem.Boolean
+                    )
+                }
+            };
 
             // Find all methods that use StreamWriter
             var validMethods = assembly.MainModule.Types
@@ -315,6 +337,83 @@ namespace Patcher
             return validFiles.Select(file => Path.Combine(directory, file)).FirstOrDefault(File.Exists);
         }
 
+        static BaseAssemblyResolver CreateResolver(Config config)
+        {
+            BaseAssemblyResolver resolver = new DefaultAssemblyResolver();
+
+            if (config.MscorlibPath != null)
+            {
+                resolver.AddSearchDirectory(config.MscorlibPath);
+                resolver.AddSearchDirectory(config.DirectoryPath);
+                return resolver;
+            }
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                var validMscorlibDirectories = new string[]
+                {
+                    @"C:\Windows\Microsoft.NET\Framework\v4.0.30319\",
+                    @"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\",
+                    @"C:\Windows\Microsoft.NET\Framework\v2.0.50727\",
+                    @"C:\Windows\Microsoft.NET\Framework64\v2.0.50727\"
+                };
+
+                foreach (var dir in validMscorlibDirectories)
+                {
+                    if (Directory.Exists(dir))
+                    {
+                        resolver.AddSearchDirectory(dir);
+                        break;
+                    }
+                }
+
+                resolver.AddSearchDirectory(RuntimeEnvironment.GetRuntimeDirectory());
+                resolver.AddSearchDirectory(config.DirectoryPath);
+                return resolver;
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                if (!Directory.Exists("/usr/lib/mono/"))
+                {
+                    resolver.AddSearchDirectory(config.DirectoryPath);
+                    return resolver;
+                }
+
+                var validMonoInstallationDirectories = new string[]
+                {
+                    "/usr/lib/mono/4.8/",
+                    "/usr/lib/mono/4.7.2/",
+                    "/usr/lib/mono/4.7.1/",
+                    "/usr/lib/mono/4.7/",
+                    "/usr/lib/mono/4.6.2/",
+                    "/usr/lib/mono/4.6.1/",
+                    "/usr/lib/mono/4.6/",
+                    "/usr/lib/mono/4.5.2/",
+                    "/usr/lib/mono/4.5.1/",
+                    "/usr/lib/mono/4.5/",
+                    "/usr/lib/mono/4.0/",
+                    "/usr/lib/mono/3.5/",
+                    "/usr/lib/mono/3.0/",
+                    "/usr/lib/mono/2.0/",
+                };
+
+                foreach (var dir in validMonoInstallationDirectories)
+                {
+                    if (Directory.Exists(dir))
+                    {
+                        resolver.AddSearchDirectory(dir);
+                        break;
+                    }
+                }
+
+                resolver.AddSearchDirectory(config.DirectoryPath);
+                return resolver;
+            }
+            
+            resolver.AddSearchDirectory(config.DirectoryPath);
+            return resolver;
+        }
+
         static void Main(string[] args)
         {
             Config config = ParseArguments(args);
@@ -337,9 +436,11 @@ namespace Patcher
             {
                 osuExe = DeobfuscateOsuExecutable(osuExe);
             }
-
+            
             Console.WriteLine("Loading assembly...");
-            AssemblyDefinition assembly = AssemblyDefinition.ReadAssembly(osuExe);
+            BaseAssemblyResolver resolver = CreateResolver(config);
+            ReaderParameters readerParams = new ReaderParameters { AssemblyResolver = resolver };
+            AssemblyDefinition assembly = AssemblyDefinition.ReadAssembly(osuExe, readerParams);
 
             var isHttpBancho = ContainsString(assembly, $"c.{config.InputDomain}");
             var isIrcClient = ContainsString(assembly, $"irc.{config.InputDomain}");
@@ -359,7 +460,7 @@ namespace Patcher
                 if (commonDll != null)
                 {
                     AssemblyDefinition commonAssembly = AssemblyDefinition.ReadAssembly(commonDll);
-                    FixNetLibEncoding(commonAssembly);
+                    FixNetLibEncoding(commonAssembly, resolver);
                     
                     Console.WriteLine("Writing osu!common assembly...");
                     commonAssembly.Write("osu!common.patched.dll");
@@ -368,7 +469,7 @@ namespace Patcher
                 else
                 {
                     // osu!common was merged into main osu!.exe
-                    FixNetLibEncoding(assembly);
+                    FixNetLibEncoding(assembly, resolver);
                 }
             }
             
