@@ -247,19 +247,6 @@ namespace Patcher
 
             foreach (var method in methodsWithStreamWriter)
             {
-                // Original Assembly:
-                // 2	0006	ldarg.0
-                // 3	0007	call	class [mscorlib]System.Text.Encoding [mscorlib]System.Text.Encoding::get_Default()
-                // 4	000C	newobj	instance void [mscorlib]System.IO.StreamWriter::.ctor(class [mscorlib]System.IO.Stream, class [mscorlib]System.Text.Encoding)
-                // 5	0011	stloc.0
-                
-                // Patched Assembly:
-                // 2	0006	ldarg.0
-                // 3	0007	ldc.i4.0
-                // 4	0008	newobj	instance void [mscorlib]System.Text.UTF8Encoding::.ctor(bool)
-                // 5	000D	newobj	instance void [mscorlib]System.IO.StreamWriter::.ctor(class [mscorlib]System.IO.Stream, class [mscorlib]System.Text.Encoding)
-                // 6	0012	stloc.0
-
                 // Replace Encoding.Default with Encoding.UTF8 in this method
                 foreach (var instruction in method.Body.Instructions)
                 {
