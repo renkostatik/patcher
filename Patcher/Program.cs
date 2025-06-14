@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using Mono.Cecil.Rocks;
 
 namespace Patcher
 {
@@ -12,7 +13,7 @@ namespace Patcher
         public string OutputDomain { get; set; } = "titanic.sh";
         public string BanchoIp { get; set; } = "176.57.150.202";
         public bool Deobfuscate { get; set; } = false;
-        public bool FixMultipart { get; set; } = false;
+        public bool FixNetLib { get; set; } = false;
     }
 
     class Program
@@ -27,7 +28,7 @@ namespace Patcher
             Console.WriteLine("  --output-domain <domain> Set output domain to replace with (default: titanic.sh)");
             Console.WriteLine("  --bancho-ip <ip>         Set Bancho IP (default: 176.57.150.202)");
             Console.WriteLine("  --deobfuscate            Automatically deobfuscate the binary with de4dot");
-            Console.WriteLine("  --fix-multipart          Fix issues with multipart form data encoding");
+            Console.WriteLine("  --fix-netlib             Fix issues with netlib data encoding");
             Console.WriteLine("  --help                   Show this help message and exit");
             Environment.Exit(0);
         }
@@ -61,8 +62,8 @@ namespace Patcher
                     case "--deobfuscate":
                         config.Deobfuscate = true;
                         break;
-                    case "--fix-multipart":
-                        config.FixMultipart = true;
+                    case "--fix-netlib":
+                        config.FixNetLib = true;
                         break;
                     default:
                         Console.WriteLine("Unknown argument: " + args[i]);
@@ -231,6 +232,71 @@ namespace Patcher
             Console.WriteLine("Done.");
         }
 
+        static void FixNetLibEncoding(AssemblyDefinition assembly)
+        {
+            Console.WriteLine("Fixing NetLib encoding...");
+
+            // Find all methods that use StreamWriter
+            var methodsWithStreamWriter = assembly.MainModule.Types
+                .SelectMany(t => t.NestedTypes.Concat(new[] { t }))
+                .SelectMany(t => t.Methods.Where(m => m.HasBody && m.Parameters.Count == 2))
+                .Where(m => m.Body.Instructions.Any(instr =>
+                    (instr.OpCode == OpCodes.Newobj || instr.OpCode == OpCodes.Call) &&
+                    instr.Operand is MethodReference mr &&
+                    mr.DeclaringType.Name == "StreamWriter"));
+
+            foreach (var method in methodsWithStreamWriter)
+            {
+                // Original Assembly:
+                // 2	0006	ldarg.0
+                // 3	0007	call	class [mscorlib]System.Text.Encoding [mscorlib]System.Text.Encoding::get_Default()
+                // 4	000C	newobj	instance void [mscorlib]System.IO.StreamWriter::.ctor(class [mscorlib]System.IO.Stream, class [mscorlib]System.Text.Encoding)
+                // 5	0011	stloc.0
+                
+                // Patched Assembly:
+                // 2	0006	ldarg.0
+                // 3	0007	ldc.i4.0
+                // 4	0008	newobj	instance void [mscorlib]System.Text.UTF8Encoding::.ctor(bool)
+                // 5	000D	newobj	instance void [mscorlib]System.IO.StreamWriter::.ctor(class [mscorlib]System.IO.Stream, class [mscorlib]System.Text.Encoding)
+                // 6	0012	stloc.0
+
+                // Replace Encoding.Default with Encoding.UTF8 in this method
+                foreach (var instruction in method.Body.Instructions)
+                {
+                    if (instruction.OpCode == OpCodes.Call &&
+                        instruction.Operand is MethodReference methodRef &&
+                        methodRef.Name == "get_Default" &&
+                        methodRef.DeclaringType.FullName == "System.Text.Encoding")
+                    {
+                        // Resolve UTF8Encoding class & find a constructor
+                        var utf8EncodingType = assembly.MainModule.ImportReference(typeof(System.Text.UTF8Encoding)).Resolve();
+                        var utf8Constructor = utf8EncodingType.Methods.FirstOrDefault(m =>
+                            m.IsConstructor &&
+                            m.Parameters.Count == 1 &&
+                            m.Parameters[0].ParameterType.FullName == "System.Boolean");
+
+                        if (utf8Constructor == null)
+                        {
+                            Console.WriteLine("Could not find UTF8Encoding(bool) constructor.");
+                            continue;
+                        }
+
+                        // Determine the offset of the instruction
+                        var uf8Offset = instruction.Offset - 4;
+                        var utf8CtorRef = assembly.MainModule.ImportReference(utf8Constructor);
+                        
+                        // Replace the existing Encoding.Default call with "new UTF8Encoding(false)"
+                        method.Body.Instructions[uf8Offset] = Instruction.Create(OpCodes.Newobj, utf8CtorRef);
+                        method.Body.Instructions.Insert(uf8Offset, Instruction.Create(OpCodes.Ldc_I4_0));
+                        Console.WriteLine($"Replaced {instruction.Operand} with UTF8 Encoding in {method.FullName}");
+                        break;
+                    }
+                }
+            }
+
+            Console.WriteLine("Done.");
+        }
+
         static string DeobfuscateOsuExecutable(string executablePath)
         {
             Console.WriteLine("Deobfuscating...");
@@ -254,6 +320,13 @@ namespace Patcher
             }
 
             return outputExecutable;
+        }
+
+        static string? FindOsuCommonDll(string directory)
+        {
+            string commonDllPath = Path.Combine(directory, "osu!common.dll");
+            if (File.Exists(commonDllPath)) return commonDllPath;
+            return null;
         }
 
         static string? FindOsuExecutable(string directory)
@@ -294,6 +367,28 @@ namespace Patcher
                 PatchBanchoIp(assembly, config.BanchoIp);
             }
 
+            if (config.FixNetLib)
+            {
+                // Check if osu!common.dll is available
+                // If not, use osu!.exe assembly
+                string? commonDll = FindOsuCommonDll(".");
+                
+                if (commonDll != null)
+                {
+                    AssemblyDefinition commonAssembly = AssemblyDefinition.ReadAssembly(commonDll);
+                    FixNetLibEncoding(commonAssembly);
+                    
+                    Console.WriteLine("Writing osu!common assembly...");
+                    commonAssembly.Write("osu!common.patched.dll");
+                    commonAssembly.Dispose();
+                }
+                else
+                {
+                    // osu!common was merged into main osu!.exe
+                    FixNetLibEncoding(assembly);
+                }
+            }
+            
             // Replace all domains
             PatchDomains(assembly, config.InputDomain, config.OutputDomain);
 
