@@ -12,6 +12,7 @@ namespace Patcher
         public string OutputDomain { get; set; } = "titanic.sh";
         public string BanchoIp { get; set; } = "176.57.150.202";
         public bool Deobfuscate { get; set; } = false;
+        public bool FixMultipart { get; set; } = false;
     }
 
     class Program
@@ -26,6 +27,7 @@ namespace Patcher
             Console.WriteLine("  --output-domain <domain> Set output domain to replace with (default: titanic.sh)");
             Console.WriteLine("  --bancho-ip <ip>         Set Bancho IP (default: 176.57.150.202)");
             Console.WriteLine("  --deobfuscate            Automatically deobfuscate the binary with de4dot");
+            Console.WriteLine("  --fix-multipart          Fix issues with multipart form data encoding");
             Console.WriteLine("  --help                   Show this help message and exit");
             Environment.Exit(0);
         }
@@ -58,6 +60,9 @@ namespace Patcher
                         break;
                     case "--deobfuscate":
                         config.Deobfuscate = true;
+                        break;
+                    case "--fix-multipart":
+                        config.FixMultipart = true;
                         break;
                     default:
                         Console.WriteLine("Unknown argument: " + args[i]);
