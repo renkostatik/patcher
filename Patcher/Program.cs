@@ -1,8 +1,8 @@
 ﻿using System.Net;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
-using Mono.Cecil.Rocks;
 using System.Runtime.InteropServices;
+// ReSharper disable All
 
 namespace Patcher
 {
@@ -13,12 +13,12 @@ namespace Patcher
         public string InputDomain { get; set; } = "ppy.sh";
         public string OutputDomain { get; set; } = "titanic.sh";
         public string BanchoIp { get; set; } = "176.57.150.202";
-        public string? MscorlibPath { get; set; } = null;
-        public bool Deobfuscate { get; set; } = false;
-        public bool FixNetLib { get; set; } = false;
+        public string? MscorlibPath { get; set; }
+        public bool Deobfuscate { get; set; }
+        public bool FixNetLib { get; set; }
     }
 
-    class Program
+    static class Program
     {
         static void PrintHelp()
         {
@@ -149,10 +149,8 @@ namespace Patcher
             // know that it does not contain a bancho ip.
             foreach (var method in methods)
             {
-                for (int i = 0; i < method.Body.Instructions.Count; i++)
+                foreach (var instruction in method.Body.Instructions)
                 {
-                    var instruction = method.Body.Instructions[i];
-
                     if (instruction.OpCode == OpCodes.Ldstr && instruction.Operand is string stringValue)
                     {
                         if (stringValue.Contains(input))
@@ -184,14 +182,14 @@ namespace Patcher
                 )
             );
 
-            List<string> ipList = new List<string>
-            {
+            List<string> ipList =
+            [
                 "50.23.74.93", "219.117.212.118", "192.168.1.106", "174.34.145.226", "216.6.228.50",
                 "50.228.6.216", "69.147.233.10", "167.83.161.203", "10.233.147.69", "1.0.0.127",
                 "53.228.6.216", "52.228.6.216", "51.228.6.216", "50.228.6.216", "151.0.0.10"
-            };
+            ];
 
-            List<long> ipListDecimal = ipList.Select(ipStr => IpToDecimal(ipStr)).ToList();
+            List<long> ipListDecimal = ipList.Select(IpToDecimal).ToList();
             long newIpDecimal = IpToDecimal(ip);
 
             foreach (var method in methods)
@@ -245,8 +243,12 @@ namespace Patcher
             // Resolve `UTF8Encoding` type from mscorlib.dll
             // This requires the resolver to be set up correctly, such that it can find a valid mscorlib.dll
             var corlib = resolver.Resolve(assembly.MainModule.AssemblyReferences.First(r => r.Name == "mscorlib"));
+            
+            // Resolve type & import it to get a reference for later use
             var utf8Type = corlib.MainModule.GetType("System.Text.UTF8Encoding");
             var utf8TypeRef = assembly.MainModule.ImportReference(utf8Type);
+            
+            // Find the constructor function we want to use
             var utf8CtorRef = new MethodReference(
                 ".ctor",
                 assembly.MainModule.TypeSystem.Void,
@@ -264,7 +266,7 @@ namespace Patcher
 
             // Find all methods that use StreamWriter
             var validMethods = assembly.MainModule.Types
-                .SelectMany(t => t.NestedTypes.Concat(new[] { t }))
+                .SelectMany(t => t.NestedTypes.Concat([t]))
                 .SelectMany(t => t.Methods.Where(m => m.HasBody && m.Parameters.Count == 2))
                 .Where(m => m.Body.Instructions.Any(instr =>
                     (instr.OpCode == OpCodes.Newobj || instr.OpCode == OpCodes.Call) &&
@@ -278,8 +280,7 @@ namespace Patcher
                 foreach (var instruction in method.Body.Instructions)
                 {
                     if (instruction.OpCode == OpCodes.Call &&
-                        instruction.Operand is MethodReference methodRef &&
-                        methodRef.Name == "get_Default" &&
+                        instruction.Operand is MethodReference { Name: "get_Default" } methodRef &&
                         methodRef.DeclaringType.FullName == "System.Text.Encoding")
                     {
                         var falseArgument = Instruction.Create(OpCodes.Ldc_I4_0);
@@ -303,7 +304,7 @@ namespace Patcher
         {
             Console.WriteLine("Deobfuscating...");
             var outputExecutable = Path.GetFileNameWithoutExtension(executablePath) + ".deobfuscated.exe";
-            var status = Deobfuscator.Deobfuscate(new string[] {
+            var status = Deobfuscator.Deobfuscate([
                 executablePath,
                 "-o", outputExecutable,
                 // Only deobfuscate strings, and leave
@@ -313,7 +314,7 @@ namespace Patcher
                 "--keep-types",
                 "--keep-names", "ntpefmagd",
                 "--preserve-table", "all,-pd"
-            });
+            ]);
 
             if (status != 0)
             {
@@ -333,7 +334,7 @@ namespace Patcher
 
         static string? FindOsuExecutable(string directory)
         {
-            string[] validFiles = { "osu!.exe", "osu.exe", "osu!test.exe", "osu!public.exe", "osu!shine1.exe", "osu!cuttingedge.exe" };
+            string[] validFiles = ["osu!.exe", "osu.exe", "osu!test.exe", "osu!public.exe", "osu!shine1.exe", "osu!cuttingedge.exe"];
             return validFiles.Select(file => Path.Combine(directory, file)).FirstOrDefault(File.Exists);
         }
 
@@ -350,7 +351,7 @@ namespace Patcher
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                var validMscorlibDirectories = new string[]
+                var validMscorlibDirectories = new[]
                 {
                     @"C:\Windows\Microsoft.NET\Framework\v4.0.30319\",
                     @"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\",
@@ -368,8 +369,6 @@ namespace Patcher
                 }
 
                 resolver.AddSearchDirectory(RuntimeEnvironment.GetRuntimeDirectory());
-                resolver.AddSearchDirectory(config.DirectoryPath);
-                return resolver;
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
@@ -379,7 +378,7 @@ namespace Patcher
                     return resolver;
                 }
 
-                var validMonoInstallationDirectories = new string[]
+                var validMonoInstallationDirectories = new []
                 {
                     "/usr/lib/mono/4.8/",
                     "/usr/lib/mono/4.7.2/",
@@ -405,9 +404,6 @@ namespace Patcher
                         break;
                     }
                 }
-
-                resolver.AddSearchDirectory(config.DirectoryPath);
-                return resolver;
             }
             
             resolver.AddSearchDirectory(config.DirectoryPath);
