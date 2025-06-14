@@ -272,9 +272,9 @@ namespace Patcher
                         return;
                     }
                 }
-                
-                Console.WriteLine("Failed to patch netlib encoding.");
             }
+            
+            Console.WriteLine("Failed to patch netlib encoding.");
         }
 
         static string DeobfuscateOsuExecutable(string executablePath)
