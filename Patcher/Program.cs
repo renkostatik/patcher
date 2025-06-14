@@ -151,13 +151,13 @@ namespace Patcher
                     {
                         if (stringValue.Contains(input))
                         {
-                            return false;
+                            return true;
                         }
                     }
                 }
             }
 
-            return true;
+            return false;
         }
 
         static long IpToDecimal(string ipAddress)
