@@ -132,8 +132,12 @@ $RECYCLE.BIN/
 
 _NCrunch*
 
-assemblies
-osu!Patched.exe
+# Editors
 .idea
 .vscode
 /.vs
+
+# Testing executables
+assemblies
+*.dll
+*.exe
