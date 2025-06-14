@@ -441,6 +441,9 @@ namespace Patcher
             BaseAssemblyResolver resolver = CreateResolver(config);
             ReaderParameters readerParams = new ReaderParameters { AssemblyResolver = resolver };
             AssemblyDefinition assembly = AssemblyDefinition.ReadAssembly(osuExe, readerParams);
+            
+            // Replace all domains
+            PatchDomains(assembly, config.InputDomain, config.OutputDomain);
 
             var isHttpBancho = ContainsString(assembly, $"c.{config.InputDomain}");
             var isIrcClient = ContainsString(assembly, $"irc.{config.InputDomain}");
@@ -450,7 +453,7 @@ namespace Patcher
                 // We have a tcp client -> try to patch bancho ip
                 PatchBanchoIp(assembly, config.BanchoIp);
             }
-
+            
             if (config.FixNetLib)
             {
                 // Check if osu!common.dll is available
@@ -473,9 +476,6 @@ namespace Patcher
                 }
             }
             
-            // Replace all domains
-            PatchDomains(assembly, config.InputDomain, config.OutputDomain);
-
             Console.WriteLine("Writing new assembly...");
             assembly.Write(config.OutputAssemblyName);
             assembly.Dispose();
