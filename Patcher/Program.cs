@@ -16,6 +16,7 @@ namespace Patcher
         public string? MscorlibPath { get; set; }
         public bool Deobfuscate { get; set; }
         public bool FixNetLib { get; set; }
+        public bool RemoveCertificateCheck { get; set; }
     }
 
     static class Program
@@ -70,6 +71,9 @@ namespace Patcher
                         break;
                     case "--fix-netlib":
                         config.FixNetLib = true;
+                        break;
+                    case "--remove-certificate-check":
+                        config.RemoveCertificateCheck = true;
                         break;
                     default:
                         Console.WriteLine("Unknown argument: " + args[i]);
@@ -300,6 +304,63 @@ namespace Patcher
             Console.WriteLine("Failed to patch netlib encoding.");
         }
 
+        static void RemoveCertificatePinning(AssemblyDefinition assembly)
+        {
+            // First we have to find the pWebRequest class
+            // This can be done by searching for the "{0}:443" string
+            var webRequestClass = assembly.MainModule.Types
+                .FirstOrDefault(
+                    t => t.Methods.Any(m => m.HasBody && m.Body.Instructions.Any(
+                        i => i.OpCode == OpCodes.Ldstr && i.Operand is string str && str.Contains("{0}:443")
+                    )
+                ));
+
+            if (webRequestClass == null)
+            {
+                Console.WriteLine("No web request class found, skipping certificate pinning removal.");
+                return;
+            }
+
+            Console.WriteLine("Found web request class: " + webRequestClass.FullName);
+
+            // Find the method that checks the certificate
+            // This one is virtualized, so it should always have a similar structure
+            var checkCertificateMethod = webRequestClass.Methods
+                .FirstOrDefault(
+                    m => m.HasBody && m.Body.Instructions.Count >= 13 &&
+                    m.Body.Instructions[0].OpCode == OpCodes.Ldc_I4_1 &&
+                    m.Body.Instructions[1].OpCode == OpCodes.Newarr &&
+                    m.Body.Instructions[2].OpCode == OpCodes.Stloc_0 &&
+                    m.Body.Instructions[3].OpCode == OpCodes.Ldloc_0 &&
+                    m.Body.Instructions[4].OpCode == OpCodes.Ldc_I4_0 &&
+                    m.Body.Instructions[5].OpCode == OpCodes.Ldarg_0 &&
+                    m.Body.Instructions[6].OpCode == OpCodes.Stelem_Ref &&
+                    m.Body.Instructions[7].OpCode == OpCodes.Call &&
+                    m.Body.Instructions[8].OpCode == OpCodes.Call &&
+                    m.Body.Instructions[9].OpCode == OpCodes.Ldstr &&
+                    m.Body.Instructions[10].OpCode == OpCodes.Ldloc_0 &&
+                    m.Body.Instructions[11].OpCode == OpCodes.Call
+                );
+
+            if (checkCertificateMethod == null)
+            {
+                Console.WriteLine("No certificate check method found, skipping certificate pinning removal.");
+                return;
+            }
+
+            // Add a return instruction at the start of the method
+            var il = checkCertificateMethod.Body.GetILProcessor();
+            var returnInstruction = Instruction.Create(OpCodes.Ret);
+            il.InsertBefore(checkCertificateMethod.Body.Instructions[0], returnInstruction);
+
+            // Remove the original instructions
+            checkCertificateMethod.Body.Instructions.Clear();
+            checkCertificateMethod.Body.Instructions.Add(returnInstruction);
+            checkCertificateMethod.Body.InitLocals = false;
+
+            Console.WriteLine("Certificate pinning removed from method: " + checkCertificateMethod.FullName);
+        }
+
         static string DeobfuscateOsuExecutable(string executablePath)
         {
             Console.WriteLine("Deobfuscating...");
@@ -448,6 +509,12 @@ namespace Patcher
             {
                 // We have a tcp client -> try to patch bancho ip
                 PatchBanchoIp(assembly, config.BanchoIp);
+            }
+            
+            if (config.RemoveCertificateCheck)
+            {
+                // Try to patch out certificate pinning
+                RemoveCertificatePinning(assembly);
             }
             
             if (config.FixNetLib)
