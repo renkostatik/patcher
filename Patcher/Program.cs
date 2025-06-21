@@ -25,15 +25,16 @@ namespace Patcher
         {
             Console.WriteLine("Usage: osu-patcher [options]");
             Console.WriteLine("Options:");
-            Console.WriteLine("  --output <file>          Set output assembly name (default: osu!patched.exe)");
-            Console.WriteLine("  --dir <directory>        Set the directory path (default: ./)");
-            Console.WriteLine("  --input-domain <domain>  Set input domain to replace (default: ppy.sh)");
-            Console.WriteLine("  --output-domain <domain> Set output domain to replace with (default: titanic.sh)");
-            Console.WriteLine("  --bancho-ip <ip>         Set Bancho IP (default: 176.57.150.202)");
-            Console.WriteLine("  --deobfuscate            Automatically deobfuscate the binary with de4dot");
-            Console.WriteLine("  --fix-netlib             Fix issues with netlib data encoding");
-            Console.WriteLine("  --mscorlib-path          Specify your path to mscorlib.dll");
-            Console.WriteLine("  --help                   Show this help message and exit");
+            Console.WriteLine("  --output <file>            Set output assembly name (default: osu!patched.exe)");
+            Console.WriteLine("  --dir <directory>          Set the directory path (default: ./)");
+            Console.WriteLine("  --input-domain <domain>    Set input domain to replace (default: ppy.sh)");
+            Console.WriteLine("  --output-domain <domain>   Set output domain to replace with (default: titanic.sh)");
+            Console.WriteLine("  --bancho-ip <ip>           Set Bancho IP (default: 176.57.150.202)");
+            Console.WriteLine("  --deobfuscate              Automatically deobfuscate the binary with de4dot");
+            Console.WriteLine("  --fix-netlib               Fix issues with netlib data encoding");
+            Console.WriteLine("  --mscorlib-path            Specify your path to mscorlib.dll");
+            Console.WriteLine("  --remove-certificate-check Remove certificate pinning checks");
+            Console.WriteLine("  --help                     Show this help message and exit");
             Environment.Exit(0);
         }
 
