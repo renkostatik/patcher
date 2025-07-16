@@ -12,7 +12,7 @@ namespace Patcher
         public string DirectoryPath { get; set; } = "./";
         public string InputDomain { get; set; } = "ppy.sh";
         public string OutputDomain { get; set; } = "titanic.sh";
-        public string BanchoIp { get; set; } = "176.57.150.202";
+        public string BanchoIp { get; set; } = "207.180.223.46";
         public string? MscorlibPath { get; set; }
         public bool Deobfuscate { get; set; }
         public bool FixNetLib { get; set; }
