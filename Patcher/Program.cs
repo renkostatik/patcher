@@ -130,7 +130,7 @@ namespace Patcher
                         }
                         else if (stringValue.StartsWith("http://peppy.chigau.com"))
                         {
-                            string patchedUrl = stringValue.Replace("peppy.chigau.com", $"osu.{outputDomain}");
+                            string patchedUrl = stringValue.Replace("peppy.chigau.com", $"chigau.{outputDomain}");
                             method.Body.Instructions[i] = Instruction.Create(OpCodes.Ldstr, patchedUrl);
                             Console.WriteLine(patchedUrl);
                         }
